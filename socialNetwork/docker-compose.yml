@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   social-graph-service:
-    image: andraderf/mysocial
+    image: andraderf/mysocial:basicot
     hostname: social-graph-service
     #    ports:
     #      - 10000:9090
@@ -41,7 +41,7 @@ services:
     restart: always
 
   compose-post-service:
-    image: andraderf/mysocial
+    image: andraderf/mysocial:basicot
     hostname: compose-post-service
     #    ports:
     #      - 10001:9090
@@ -58,7 +58,7 @@ services:
       - OTEL_RESOURCE_ATTRIBUTES=service.name=OT-compose-post-service
 
   post-storage-service:
-    image: andraderf/mysocial
+    image: andraderf/mysocial:basicot
     hostname: post-storage-service
     ports:
       - 10002:9090
@@ -91,7 +91,7 @@ services:
     restart: always
 
   user-timeline-service:
-    image: andraderf/mysocial
+    image: andraderf/mysocial:basicot
     hostname: user-timeline-service
     #    ports:
     #      - 10003:9090
@@ -125,7 +125,7 @@ services:
     restart: always
 
   url-shorten-service:
-    image: andraderf/mysocial
+    image: andraderf/mysocial:basicot
     hostname: url-shorten-service
     #    ports:
     #      - 10004:9090
@@ -159,7 +159,7 @@ services:
     restart: always
 
   user-service:
-    image: andraderf/mysocial
+    image: andraderf/mysocial:basicot
     hostname: user-service
     #    ports:
     #      - 10005:9090
@@ -192,7 +192,7 @@ services:
     restart: always
 
   media-service:
-    image: andraderf/mysocial
+    image: andraderf/mysocial:basicot
     hostname: media-service
     #    ports:
     #      - 10006:9090
@@ -226,7 +226,7 @@ services:
     restart: always
 
   text-service:
-    image: andraderf/mysocial
+    image: andraderf/mysocial:basicot
     hostname: text-service
     #    ports:
     #      - 10007:9090
@@ -244,7 +244,7 @@ services:
 
 
   unique-id-service:
-    image: andraderf/mysocial
+    image: andraderf/mysocial:basicot
     hostname: unique-id-service
     #    ports:
     #      - 10008:9090
@@ -262,7 +262,7 @@ services:
 
 
   user-mention-service:
-    image: andraderf/mysocial
+    image: andraderf/mysocial:basicot
     hostname: user-mention-service
     #    ports:
     #      - 10009:9090
