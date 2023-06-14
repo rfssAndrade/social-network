@@ -280,7 +280,7 @@ services:
 
 
   home-timeline-service:
-    image: mysocial
+    image: andraderf/mysocial:basicot
     hostname: home-timeline-service
     #    ports:
     #      - 10010:9090
@@ -349,6 +349,7 @@ services:
       #      - 14268:14268
       #      - 9411:9411
       - 4318:4318
+      - 4317:4317
     restart: always
     environment:
       - COLLECTOR_ZIPKIN_HTTP_PORT=9411
