@@ -1,0 +1,31 @@
+name: otel-collector
+component: obeservability
+
+ports:
+  - port: 6831
+    targetPort: 6831
+    protocol: UDP
+  - port: 8889
+    targetPort: 8889
+  - port: 55679
+    targetPort: 55679
+
+
+container:
+  image: otel/opentelemetry-collector-contrib
+  imageVersion: latest
+  name: otel-collector
+  args: 
+  - --config=/etc/otelcol-contrib/config.yaml 
+  ports: 
+  - containerPort: 6831
+    protocol: UDP
+  - containerPort: 8889
+  - containerPort: 55679
+
+configMaps:
+  - name: otel-collector-config.yml
+    mountPath: /etc/otelcol-contrib/config.yaml
+    value: otel-collector-config
+
+

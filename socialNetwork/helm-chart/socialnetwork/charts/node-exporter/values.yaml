@@ -1,0 +1,45 @@
+name: node-exporter
+component: obeservability
+deployment: DaemonSet
+ports:
+  - port: 9100
+    targetPort: 9100
+
+container:
+  image: prom/node-exporter
+  imageVersion: v1.3.1
+  name: node-exporter
+
+  volumeMounts:
+    - mountPath: /host/sys
+      mountPropagation: HostToContainer
+      name: sys
+      readOnly: true
+    - mountPath: /host/root
+      mountPropagation: HostToContainer
+      name: root
+      readOnly: true
+    - mountPath: /host/proc
+      mountPropagation: HostToContainer
+      name: proc
+      readOnly: true
+
+  args:
+    - --path.procfs=/host/proc
+    - --path.sysfs=/host/sys
+    - --path.rootfs=/host/root
+    - --no-collector.wifi
+    - --no-collector.hwmon
+    - --collector.filesystem.ignored-mount-points=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/pods/.+)($|/)
+    - --collector.netclass.ignored-devices=^(veth.*)$
+
+volumeHostPaths:
+  - hostPath:
+      path: /sys
+    name: sys
+  - hostPath:
+      path: /
+    name: root
+  - hostPath:
+      path: /proc
+    name: proc

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: node-exporter
+description: Data scraper/storage
+type: application
+version: 0.1.0
+appVersion: 1.15.8.1rc1

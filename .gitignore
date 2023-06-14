@@ -1,0 +1,9 @@
+.vscode
+.DS_Store
+build
+*/wrk2/deps
+*/wrk2/obj
+*/wrk2/wrk
+.idea/
+
+/socialNetwork/helm-chart/GIT_TOKEN

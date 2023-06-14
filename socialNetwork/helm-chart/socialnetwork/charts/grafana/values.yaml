@@ -1,0 +1,55 @@
+name: grafana
+component: obeservability
+
+portLb:
+  port: 3000
+  targetPort: 3000
+
+container:
+  image: grafana/grafana-oss
+  imageVersion: 9.1.4
+  name: grafana
+  env:
+    - name: "GF_USERS_DEFAULT_THEME"     
+      value: "light"
+
+configMaps:
+  - name: grafana-datasource.yaml
+    mountPath: /etc/grafana/provisioning/datasources/grafana-datasource.yaml
+    value: grafana-datasource
+
+  - name: grafana-dashboard-loader.yaml
+    mountPath: /etc/grafana/provisioning/dashboards/grafana-dashboard-loader.yaml
+    value: grafana-dashboard-loader
+
+  - name: grafana-dashboard.json
+    mountPath: /etc/grafana/provisioning/dashboards/grafana-dashboard.json
+    value: grafana-dashboard
+  
+  - name: grafana-dashboard-resource-utilization.json
+    mountPath: /etc/grafana/provisioning/dashboards/grafana-dashboard-resource-utilization.json
+    value: grafana-dashboard-resource-utilization
+
+  - name: grafana-dashboard-label-metrics.json
+    mountPath: /etc/grafana/provisioning/dashboards/grafana-dashboard-label-metrics.json
+    value: grafana-dashboard-label-metrics
+
+  - name: grafana-dashboard-kube-state-metrics.json
+    mountPath: /etc/grafana/provisioning/dashboards/grafana-dashboard-kube-state-metrics.json
+    value: grafana-dashboard-kube-state-metrics
+
+  - name: grafana-alert-rule.yaml
+    mountPath: /etc/grafana/provisioning/alerting/grafana-alert-rule.yaml
+    value: grafana-alert-rule
+
+  - name: grafana-contact-point.yaml
+    mountPath: /etc/grafana/provisioning/alerting/grafana-contact-point.yaml
+    value: grafana-contact-point
+
+  - name: grafana-notification-policy.yaml
+    mountPath: /etc/grafana/provisioning/alerting/grafana-notification-policy.yaml
+    value: grafana-notification-policy
+
+  - name: grafana-service-latency-dashboard.json
+    mountPath: /etc/grafana/provisioning/dashboards/grafana-service-latency-dashboard.json
+    value: grafana-service-latency-dashboard
