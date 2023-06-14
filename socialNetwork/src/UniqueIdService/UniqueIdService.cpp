@@ -59,4 +59,5 @@ int main(int argc, char *argv[]) {
 
   LOG(info) << "Starting the unique-id-service server ...";
   server.serve();
+  CleanupTracer();
 }

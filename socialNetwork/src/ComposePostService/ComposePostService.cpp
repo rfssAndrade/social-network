@@ -109,4 +109,5 @@ int main(int argc, char *argv[]) {
       std::make_shared<TBinaryProtocolFactory>());
   LOG(info) << "Starting the compose-post-service server ...";
   server.serve();
+  CleanupTracer();
 }

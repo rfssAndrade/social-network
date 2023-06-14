@@ -1,6 +1,6 @@
 global: 
   replicas: 1
-  imagePullPolicy: "Always"
+  imagePullPolicy: "IfNotPresent"
   restartPolicy: Always
   serviceType: ClusterIP
   dockerRegistry: docker.io
@@ -30,11 +30,11 @@ global:
   nginx:
     resolverName: kube-dns.kube-system.svc.cluster.local
   jaeger:
-    localAgentHostPort: otel-collector:6831
+    localAgentHostPort: jaeger:6831
     queueSize: 1000000
     bufferFlushInterval: 10
-    samplerType: const
-    samplerParam: 1
+    samplerType: probabilistic
+    samplerParam: 0.01
     disabled: false
     logSpans: false
   gitRepoUrl: ci.tno.nl/gitlab/transact/deathstarbenchmirror.git

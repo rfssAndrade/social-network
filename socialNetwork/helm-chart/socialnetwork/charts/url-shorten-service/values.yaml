@@ -6,7 +6,7 @@ ports:
  
 container:
   command: UrlShortenService
-  image: rajatchawlaesi/social-network-microservices
+  image: deathstarbench/social-network-microservices
   name: url-shorten-service
   ports: 
   - containerPort: 9090

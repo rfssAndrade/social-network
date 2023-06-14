@@ -80,4 +80,5 @@ int main(int argc, char* argv[]) {
 
   LOG(info) << "Starting the post-storage-service server...";
   server.serve();
+  CleanupTracer();
 }

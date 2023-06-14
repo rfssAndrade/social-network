@@ -23,7 +23,7 @@ using namespace sw::redis;
 namespace social_network {
 
   namespace context = opentelemetry::context;
-using namespace opentelemetry::trace;
+  using namespace opentelemetry::trace;
 class HomeTimelineHandler : public HomeTimelineServiceIf {
  public:
   HomeTimelineHandler(Redis *,
@@ -74,37 +74,43 @@ void HomeTimelineHandler::WriteHomeTimeline(
     int64_t req_id, int64_t post_id, int64_t user_id, int64_t timestamp,
     const std::vector<int64_t> &user_mentions_id,
     const std::map<std::string, std::string> &carrier) {
+  
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("home_timeline_tracer");
-    auto span_OTEL = tracer->StartSpan("WriteHomeTimeline");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  auto span_OTEL = get_tracer("home_timeline_tracer")->StartSpan("WriteHomeTimeline", options);
+  auto scope = get_tracer("home_timeline_tracer")->WithActiveSpan(span_OTEL);
+  
+  // // Initialize a span
+  // TextMapReader reader(carrier);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "write_home_timeline_server", {opentracing::ChildOf(parent_span->get())});
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
-  // Initialize a span
-  TextMapReader reader(carrier);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "write_home_timeline_server", {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  // Find followers of the user
-  auto followers_span = opentracing::Tracer::Global()->StartSpan(
-      "get_followers_client", {opentracing::ChildOf(&span->context())});
-  std::map<std::string, std::string> writer_text_map;
-  followers_span->SetTag("span.kind","client");
-  TextMapWriter writer(writer_text_map);
-  opentracing::Tracer::Global()->Inject(followers_span->context(), writer);
+  StartSpanOptions followers_options;
+  followers_options.kind = SpanKind::kClient;  // client
+  
+  auto followers_span = get_tracer("home_timeline_tracer")->StartSpan("Get-Followers-Client", followers_options);
+  auto followers_scope = get_tracer("home_timeline_tracer")->WithActiveSpan(followers_span);
+  auto followers_ctx = context::RuntimeContext::GetCurrent();
+  HttpTextMapCarrier<std::map<std::string, std::string>> followers_carrier;
+  auto followers_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  followers_prop->Inject(followers_carrier, followers_ctx);
+
+  // // Find followers of the user
+  // auto followers_span = opentracing::Tracer::Global()->StartSpan(
+  //     "get_followers_client", {opentracing::ChildOf(&span->context())});
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // opentracing::Tracer::Global()->Inject(followers_span->context(), writer);
 
   auto social_graph_client_wrapper = _social_graph_client_pool->Pop();
   if (!social_graph_client_wrapper) {
@@ -117,25 +123,36 @@ void HomeTimelineHandler::WriteHomeTimeline(
   std::vector<int64_t> followers_id;
   try {
     social_graph_client->GetFollowers(followers_id, req_id, user_id,
-                                      writer_text_map);
+                                      followers_carrier.headers_);
   } catch (...) {
     LOG(error) << "Failed to get followers from social-network-service";
     _social_graph_client_pool->Remove(social_graph_client_wrapper);
     throw;
   }
   _social_graph_client_pool->Keepalive(social_graph_client_wrapper);
-  followers_span->Finish();
+  // followers_span->Finish();
+  followers_span->End();
 
   std::set<int64_t> followers_id_set(followers_id.begin(), followers_id.end());
   followers_id_set.insert(user_mentions_id.begin(), user_mentions_id.end());
 
   // Update Redis ZSet
   // Zset key: follower_id, Zset value: post_id_str, Zset score: timestamp_str
-  auto redis_span = opentracing::Tracer::Global()->StartSpan(
-      "write_home_timeline_redis_update_client",
-      {opentracing::ChildOf(&span->context())});
-  redis_span->SetTag("span.kind","client");
+
+  // auto redis_span = opentracing::Tracer::Global()->StartSpan(
+  //     "write_home_timeline_redis_update_client",
+  //     {opentracing::ChildOf(&span->context())});
   std::string post_id_str = std::to_string(post_id);
+
+  StartSpanOptions redis_options;
+  redis_options.kind = SpanKind::kClient;  // client
+  
+  auto redis_span = get_tracer("home_timeline_tracer")->StartSpan("Redis-Update-Client", redis_options);
+  auto redis_scope = get_tracer("home_timeline_tracer")->WithActiveSpan(redis_span);
+  auto redis_ctx = context::RuntimeContext::GetCurrent();
+  HttpTextMapCarrier<std::map<std::string, std::string>> redis_carrier;
+  auto redis_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  redis_prop->Inject(redis_carrier, redis_ctx);
 
   {
     if (_redis_client_pool) {
@@ -180,11 +197,14 @@ void HomeTimelineHandler::WriteHomeTimeline(
 
       } catch (const Error &err) {
         LOG(error) << err.what();
+        redis_span->End();
+        span_OTEL->End();
         throw err;
       }
     }
   }
-  redis_span->Finish();
+  // redis_span->Finish();
+  redis_span->End();
   span_OTEL->End();
 }
 
@@ -192,40 +212,48 @@ void HomeTimelineHandler::ReadHomeTimeline(
     std::vector<Post> &_return, int64_t req_id, int64_t user_id, int start_idx,
     int stop_idx, const std::map<std::string, std::string> &carrier) {
 
-      // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("home_timeline_tracer");
-    auto span_OTEL = tracer->StartSpan("WriteHomeTimeline");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
-  // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "read_home_timeline_server", {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
+
+  auto span_OTEL = get_tracer("home_timeline_tracer")->StartSpan("ReadHomeTimeline", options);
+  auto scope = get_tracer("home_timeline_tracer")->WithActiveSpan(span_OTEL);
+  
+  // // Initialize a span
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "read_home_timeline_server", {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   if (stop_idx <= start_idx || start_idx < 0) {
+    span_OTEL->End();
     return;
   }
 
-  auto redis_span = opentracing::Tracer::Global()->StartSpan(
-      "read_home_timeline_redis_find_client",
-      {opentracing::ChildOf(&span->context())});
-  redis_span->SetTag("span.kind","client");
+  // auto redis_span = opentracing::Tracer::Global()->StartSpan(
+  //     "read_home_timeline_redis_find_client",
+  //     {opentracing::ChildOf(&span->context())});
+
+  StartSpanOptions redis_options;
+  redis_options.kind = SpanKind::kClient;  // client
+  
+  auto redis_span = get_tracer("home_timeline_tracer")->StartSpan("Redis-Find-Client", redis_options);
+  auto redis_scope = get_tracer("home_timeline_tracer")->WithActiveSpan(redis_span);
+  auto redis_ctx = context::RuntimeContext::GetCurrent();
+  HttpTextMapCarrier<std::map<std::string, std::string>> redis_carrier;
+  auto redis_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  redis_prop->Inject(redis_carrier, redis_ctx);
+
   std::vector<std::string> post_ids_str;
   try {
     if (_redis_client_pool) {
@@ -241,7 +269,18 @@ void HomeTimelineHandler::ReadHomeTimeline(
     LOG(error) << err.what();
     throw err;
   }
-  redis_span->Finish();
+  // redis_span->Finish();
+  redis_span->End();
+
+  StartSpanOptions posts_options;
+  posts_options.kind = SpanKind::kClient;  // client
+  
+  auto posts_span = get_tracer("home_timeline_tracer")->StartSpan("Read-Posts-Client", posts_options);
+  auto posts_scope = get_tracer("home_timeline_tracer")->WithActiveSpan(posts_span);
+  auto posts_ctx = context::RuntimeContext::GetCurrent();
+  HttpTextMapCarrier<std::map<std::string, std::string>> posts_carrier;
+  auto posts_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  posts_prop->Inject(posts_carrier, posts_ctx);
 
   std::vector<int64_t> post_ids;
   for (auto &post_id_str : post_ids_str) {
@@ -257,14 +296,14 @@ void HomeTimelineHandler::ReadHomeTimeline(
   }
   auto post_client = post_client_wrapper->GetClient();
   try {
-    post_client->ReadPosts(_return, req_id, post_ids, writer_text_map);
+    post_client->ReadPosts(_return, req_id, post_ids, posts_carrier.headers_);
   } catch (...) {
     _post_client_pool->Remove(post_client_wrapper);
     LOG(error) << "Failed to read posts from post-storage-service";
     throw;
   }
   _post_client_pool->Keepalive(post_client_wrapper);
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
 }
 

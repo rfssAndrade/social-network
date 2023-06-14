@@ -112,6 +112,7 @@ int main(int argc, char *argv[]) {
                            std::make_shared<TBinaryProtocolFactory>());
     LOG(info) << "Starting the user-timeline-service server...";
     server.serve();
+    CleanupTracer();
   } else {
     Redis redis_client_pool =
         init_redis_client_pool(config_json, "user-timeline");
@@ -124,5 +125,6 @@ int main(int argc, char *argv[]) {
                            std::make_shared<TBinaryProtocolFactory>());
     LOG(info) << "Starting the user-timeline-service server...";
     server.serve();
+    CleanupTracer();
   }
 }

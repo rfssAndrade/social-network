@@ -3,22 +3,13 @@ global:
   scrape_interval: 5s
 
 scrape_configs:
-
-  - job_name: aggregated-trace-metrics
-    static_configs:
-      - targets: ["otel-collector:8889"]
-
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
 
-  - job_name: 'node-exporter'
-    kubernetes_sd_configs:
-      - role: endpoints
-    relabel_configs:
-    - source_labels: [__meta_kubernetes_endpoints_name]
-      regex: 'node-exporter'
-      action: keep
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["node-exporter:9100"]
   
   - job_name: 'kubernetes-apiservers'
 

@@ -1,6 +1,5 @@
 name: node-exporter
 component: obeservability
-deployment: DaemonSet
 ports:
   - port: 9100
     targetPort: 9100

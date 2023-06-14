@@ -78,33 +78,28 @@ void UrlShortenHandler::ComposeUrls(
     const std::vector<std::string> &urls,
     const std::map<std::string, std::string> &carrier) {
 
-// OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("url_shorten_tracer");
-    auto span_OTEL = tracer->StartSpan("ComposeUrls");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
-  // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "compose_urls_server",
-      { opentracing::ChildOf(parent_span->get()) });
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  auto span_OTEL = get_tracer("url_shorten_tracer")->StartSpan("ComposeUrls", options);
+  auto scope = get_tracer("url_shorten_tracer")->WithActiveSpan(span_OTEL);
+  // // Initialize a span
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "compose_urls_server",
+  //     { opentracing::ChildOf(parent_span->get()) });
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   std::vector<Url> target_urls;
   std::future<void> mongo_future;
@@ -138,10 +133,20 @@ void UrlShortenHandler::ComposeUrls(
             throw se;
           }
 
-          auto mongo_span = opentracing::Tracer::Global()->StartSpan(
-              "url_mongo_insert_client",
-              { opentracing::ChildOf(&span->context()) });
-          mongo_span->SetTag("span.kind","server");
+          // auto mongo_span = opentracing::Tracer::Global()->StartSpan(
+          //     "url_mongo_insert_client",
+          //     { opentracing::ChildOf(&span->context()) });
+
+          StartSpanOptions mongo_options;
+          mongo_options.kind = SpanKind::kClient;  // client
+          
+          auto mongo_span = get_tracer("url_shorten_tracer")->StartSpan("Mongo-Insert-Client", mongo_options);
+          auto mongo_scope = get_tracer("url_shorten_tracer")->WithActiveSpan(mongo_span);
+          auto mongo_ctx = context::RuntimeContext::GetCurrent();
+          HttpTextMapCarrier<std::map<std::string, std::string>> mongo_carrier;
+          auto mongo_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+          mongo_prop->Inject(mongo_carrier, mongo_ctx);
+
           mongoc_bulk_operation_t *bulk;
           bson_t *doc;
           bson_error_t error;
@@ -172,7 +177,8 @@ void UrlShortenHandler::ComposeUrls(
           mongoc_bulk_operation_destroy(bulk);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          mongo_span->Finish();
+          // mongo_span->Finish();
+          mongo_span->End();
         });
 
   }
@@ -187,7 +193,7 @@ void UrlShortenHandler::ComposeUrls(
   }
 
   _return = target_urls;
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
 }
 

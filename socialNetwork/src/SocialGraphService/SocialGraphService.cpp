@@ -108,6 +108,7 @@ int main(int argc, char *argv[]) {
         std::make_shared<TBinaryProtocolFactory>());
     LOG(info) << "Starting the social-graph-service server with Resis cluster...";
     server.serve();
+    CleanupTracer();
   } else {
     Redis redis_client_pool =
         init_redis_client_pool(config_json, "social-graph");
@@ -119,5 +120,6 @@ int main(int argc, char *argv[]) {
         std::make_shared<TBinaryProtocolFactory>());
     LOG(info) << "Starting the social-graph-service server ...";
     server.serve();
+    CleanupTracer();
   }
 }

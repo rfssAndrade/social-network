@@ -85,5 +85,3 @@ dependencies:
     version: 7.6.3
     condition: global.redis.cluster.enabled
     repository: https://charts.bitnami.com/bitnami
-  - name: otel-collector
-    version: 0.1.0

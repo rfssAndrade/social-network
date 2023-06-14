@@ -1,0 +1,11 @@
+FROM yg397/openresty-thrift:xenial AS builder
+
+RUN apt-get -y install wget gawk bison python3
+
+RUN wget -c --no-check-certificate https://ftp.gnu.org/gnu/glibc/glibc-2.29.tar.gz \
+  && tar -zxvf glibc-2.29.tar.gz \
+  && mkdir glibc-2.29/build \
+  && cd glibc-2.29/build \
+  && ../configure --prefix=/opt/glibc \
+  && make \
+  && make install

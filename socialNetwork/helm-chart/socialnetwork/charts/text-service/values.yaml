@@ -6,7 +6,7 @@ ports:
 
 container:
   command: TextService
-  image: rajatchawlaesi/social-network-microservices
+  image: deathstarbench/social-network-microservices
   name: text-service
   ports: 
   - containerPort: 9090

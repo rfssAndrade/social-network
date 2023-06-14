@@ -25,6 +25,21 @@
 #include "opentelemetry/nostd/shared_ptr.h"
 #include "opentelemetry/exporters/otlp/otlp_grpc_exporter_factory.h"
 
+#include "opentelemetry/exporters/ostream/span_exporter_factory.h"
+#include "opentelemetry/sdk/trace/tracer_context_factory.h"
+#include "opentelemetry/sdk/trace/tracer_provider_factory.h"
+#include "opentelemetry/trace/provider.h"
+
+#include "opentelemetry/context/propagation/global_propagator.h"
+#include "opentelemetry/context/propagation/text_map_propagator.h"
+#include "opentelemetry/trace/propagation/http_trace_context.h"
+
+#include <cstring>
+#include <iostream>
+#include <vector>
+#include "opentelemetry/ext/http/client/http_client.h"
+#include "opentelemetry/nostd/shared_ptr.h"
+
 //#include "opentelemetry/trace/propagation/jaeger.h"
 //#include "opentelemetry/exporters/jaeger/jaeger_exporter_factory.h"
 
@@ -38,6 +53,8 @@ namespace  {
 
 using opentracing::expected;
 using opentracing::string_view;
+namespace context = opentelemetry::context;
+using namespace opentelemetry::trace;
 opentelemetry::exporter::otlp::OtlpHttpExporterOptions opts;
 //opentelemetry::exporter::jaeger::JaegerExporterOptions jopts;
 
@@ -79,6 +96,7 @@ public:
   virtual void Set(nostd::string_view key, nostd::string_view value) noexcept override
   {
     headers_[std::string(key)] = std::string(value);
+    LOG(info) << "OTEL    " << "key: " << key << " value: " << value << "/n";
   }
 
   std::map<std::string, std::string> headers_;
@@ -91,11 +109,53 @@ class TextMapWriter : public opentracing::TextMapWriter {
 
   expected<void> Set(string_view key, string_view value) const override {
     _text_map[key] = value;
+    LOG(error) << "IN";
+    LOG(error) << "TRACING    " << "key: " << key << " value: " << value;
+    LOG(error) << "OUT";
     return {};
   }
 
  private:
   std::map<std::string, std::string>& _text_map;
+};
+
+template <typename T>
+class HttpTextMapCarrier : public opentelemetry::context::propagation::TextMapCarrier
+{
+public:
+  HttpTextMapCarrier(T &headers) : headers_(headers) {}
+  HttpTextMapCarrier() = default;
+  virtual opentelemetry::nostd::string_view Get(
+      opentelemetry::nostd::string_view key) const noexcept override
+  {
+    std::string key_to_compare = key.data();
+    // Header's first letter seems to be  automatically capitaliazed by our test http-server, so
+    // compare accordingly.
+    LOG(info) << "OTEL    " << "key: " << key;
+    if (key == opentelemetry::trace::propagation::kTraceParent)
+    {
+      key_to_compare = "traceparent";
+    }
+    else if (key == opentelemetry::trace::propagation::kTraceState)
+    {
+      key_to_compare = "tracestate";
+    }
+    auto it = headers_.find(key_to_compare);
+    if (it != headers_.end())
+    {
+      return it->second;
+    }
+    return "";
+  }
+
+  virtual void Set(opentelemetry::nostd::string_view key,
+                   opentelemetry::nostd::string_view value) noexcept override
+  {
+    headers_.insert(std::pair<std::string, std::string>(std::string(key), std::string(value)));
+    LOG(info) << "OTEL    " << "key: " << key << " value: " << value;
+  }
+
+  T headers_;
 };
 
 void SetUpTracer(
@@ -107,6 +167,11 @@ void SetUpTracer(
     auto exporter  = opentelemetry::exporter::otlp::OtlpGrpcExporterFactory::Create(opts);
     //auto exporter  = jaeger::JaegerExporterFactory::Create(jopts);
     auto processor = trace_sdk::SimpleSpanProcessorFactory::Create(std::move(exporter));
+    std::vector<std::unique_ptr<opentelemetry::sdk::trace::SpanProcessor>> processors;
+    processors.push_back(std::move(processor));
+    // Default is an always-on sampler.
+    std::shared_ptr<opentelemetry::sdk::trace::TracerContext> context =
+      opentelemetry::sdk::trace::TracerContextFactory::Create(std::move(processors));
     std::shared_ptr<opentelemetry::trace::TracerProvider> provider =
         trace_sdk::TracerProviderFactory::Create(std::move(processor));
     // Set the global trace provider
@@ -143,10 +208,19 @@ void SetUpTracer(
       sleep(1);
     }
   }
-
-
 }
 
+opentelemetry::nostd::shared_ptr<opentelemetry::trace::Tracer> get_tracer(std::string tracer_name)
+{
+  auto provider = opentelemetry::trace::Provider::GetTracerProvider();
+  return provider->GetTracer(tracer_name);
+}
+
+void CleanupTracer()
+{
+  std::shared_ptr<opentelemetry::trace::TracerProvider> none;
+  opentelemetry::trace::Provider::SetTracerProvider(none);
+}
 
 } //namespace social_network
 

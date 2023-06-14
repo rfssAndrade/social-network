@@ -1,14 +1,12 @@
 {{- define "socialnetwork.templates.baseDeployment" }}
 apiVersion: apps/v1
-kind: {{ .Values.deployment | default "Deployment" }}
+kind: Deployment
 metadata:
   labels:
     service: {{ .Values.name }}
   name: {{ .Values.name }}
 spec: 
-  {{if ne .Values.deployment "DaemonSet"}}
   replicas: {{ .Values.replicas | default .Values.global.replicas }}
-  {{ end }}
   selector:
     matchLabels:
       service: {{ .Values.name }}
@@ -70,15 +68,6 @@ spec:
           readOnly: {{ $volumeMount.readOnly }}
         {{- end }}
         {{- end }}
-        {{- if .limit }}
-        resources:
-          requests:
-            cpu: {{.limit.cpuRequest}}
-            memory: {{.limit.memoryRequest}}
-          limits:
-            cpu: {{.limit.cpuLimit}}
-            memory: {{.limit.memoryLimit}}
-        {{- end}}
       {{- end -}}
       {{- if $.Values.configMaps }}
       volumes:

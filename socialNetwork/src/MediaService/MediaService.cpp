@@ -36,4 +36,5 @@ int main(int argc, char *argv[]) {
 
   LOG(info) << "Starting the media-service server...";
   server.serve();
+  CleanupTracer();
 }

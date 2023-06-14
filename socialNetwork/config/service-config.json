@@ -31,11 +31,11 @@
     "binary_protocol": 1
   },
   "social-graph-service": {
+    "keepalive_ms": 10000,
     "addr": "social-graph-service",
-    "port": 9090,
-    "connections": 512,
     "timeout_ms": 10000,
-    "keepalive_ms": 10000
+    "port": 9090,
+    "connections": 512
   },
   "user-timeline-redis": {
     "keepalive_ms": 10000,
@@ -101,29 +101,7 @@
     "port": 9090,
     "connections": 512
   },
-  "media-mongodb": {
-    "addr": "media-mongodb",
-    "port": "9090",
-    "connections": 512,
-    "timeout_ms": 10000,
-    "keepalive_ms": 10000
-  },
-  "media-frontend": {
-    "addr": "media-frontend",
-    "port": 8081,
-    "connections": 512,
-    "timeout_ms": 10000,
-    "keepalive_ms": 10000
-  },
-  "media-memcached": {
-    "addr": "media-memcached",
-    "port": "9090",
-    "connections": 512,
-    "timeout_ms": 10000,
-    "keepalive_ms": 10000,
-    "binary_protocol": 1
-  },
-"write-home-timeline-service": {
+  "write-home-timeline-service": {
     "keepalive_ms": 10000,
     "workers": 32,
     "connections": 512,

@@ -13,6 +13,12 @@ receivers:
       grpc:
         endpoint: "localhost:65535"
 
+extensions:
+  health_check:
+  pprof:
+  zpages:
+    endpoint: localhost:55679
+
 exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
@@ -28,7 +34,7 @@ exporters:
       insecure: true
 
   logging:
-    loglevel: debug
+    verbosity: detailed
 
 processors:
   batch:
@@ -36,6 +42,9 @@ processors:
     metrics_exporter: prometheus
 
 service:
+  telemetry:
+    logs:
+      level: "debug"
   pipelines:
     traces:
       receivers: [otlp,jaeger]

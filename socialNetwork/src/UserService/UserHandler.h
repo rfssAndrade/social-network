@@ -133,33 +133,29 @@ void UserHandler::RegisterUserWithId(
     const std::string &last_name, const std::string &username,
     const std::string &password, const int64_t user_id,
     const std::map<std::string, std::string> &carrier) {
-    // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("user_handler_tracer");
-    auto span_OTEL = tracer->StartSpan("RegisterUserWithId");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL 
-  // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "register_user_withid_server",
-      {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
+
+  auto span_OTEL = get_tracer("user_handler_tracer")->StartSpan("RegisterUserWithId", options);
+  auto scope = get_tracer("user_handler_tracer")->WithActiveSpan(span_OTEL);
+  // // Initialize a span
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "register_user_withid_server",
+  //     {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   // Store user info into mongodb
   mongoc_client_t *mongodb_client =
@@ -213,9 +209,8 @@ void UserHandler::RegisterUserWithId(
     BSON_APPEND_UTF8(new_doc, "password", password_hashed.c_str());
 
     bson_error_t error;
-    auto user_insert_span = opentracing::Tracer::Global()->StartSpan(
-        "user_mongo_insert_cilent", {opentracing::ChildOf(&span->context())});
-    user_insert_span->SetTag("span.kind","client");
+    // auto user_insert_span = opentracing::Tracer::Global()->StartSpan(
+    //     "user_mongo_insert_cilent", {opentracing::ChildOf(&span->context())}); // TODO replace
     if (!mongoc_collection_insert_one(collection, new_doc, nullptr, nullptr,
                                       &error)) {
       LOG(error) << "Failed to insert user " << username
@@ -232,7 +227,7 @@ void UserHandler::RegisterUserWithId(
     } else {
       LOG(debug) << "User: " << username << " registered";
     }
-    user_insert_span->Finish();
+    // user_insert_span->Finish();
     bson_destroy(new_doc);
   }
   bson_destroy(query);
@@ -250,7 +245,7 @@ void UserHandler::RegisterUserWithId(
     }
     auto social_graph_client = social_graph_client_wrapper->GetClient();
     try {
-      social_graph_client->InsertUser(req_id, user_id, writer_text_map);
+      social_graph_client->InsertUser(req_id, user_id, carrier_map.headers_);
     } catch (...) {
       _social_graph_client_pool->Remove(social_graph_client_wrapper);
       LOG(error) << "Failed to insert user to social-graph-client";
@@ -259,7 +254,7 @@ void UserHandler::RegisterUserWithId(
     _social_graph_client_pool->Keepalive(social_graph_client_wrapper);
   }
 
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
 }
 
@@ -269,32 +264,27 @@ void UserHandler::RegisterUser(
     const std::string &password,
     const std::map<std::string, std::string> &carrier) {
 
-    // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("user_handler_tracer");
-    auto span_OTEL = tracer->StartSpan("RegisterUser");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
+  auto span_OTEL = get_tracer("user_handler_tracer")->StartSpan("RegisterUser", options);
+  auto scope = get_tracer("user_handler_tracer")->WithActiveSpan(span_OTEL);
   // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "register_user_server", {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "register_user_server", {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   // Compose user_id
   _thread_lock->lock();
@@ -381,9 +371,8 @@ void UserHandler::RegisterUser(
     std::string password_hashed = picosha2::hash256_hex_string(password + salt);
     BSON_APPEND_UTF8(new_doc, "password", password_hashed.c_str());
 
-    auto user_insert_span = opentracing::Tracer::Global()->StartSpan(
-        "user_mongo_insert_client", {opentracing::ChildOf(&span->context())});
-    user_insert_span->SetTag("span.kind","client");
+    // auto user_insert_span = opentracing::Tracer::Global()->StartSpan(
+    //     "user_mongo_insert_client", {opentracing::ChildOf(&span->context())}); //TODO replace
     if (!mongoc_collection_insert_one(collection, new_doc, nullptr, nullptr,
                                       &error)) {
       LOG(error) << "Failed to insert user " << username
@@ -400,7 +389,7 @@ void UserHandler::RegisterUser(
     } else {
       LOG(debug) << "User: " << username << " registered";
     }
-    user_insert_span->Finish();
+    // user_insert_span->Finish();
     bson_destroy(new_doc);
   }
   bson_destroy(query);
@@ -418,7 +407,7 @@ void UserHandler::RegisterUser(
     }
     auto social_graph_client = social_graph_client_wrapper->GetClient();
     try {
-      social_graph_client->InsertUser(req_id, user_id, writer_text_map);
+      social_graph_client->InsertUser(req_id, user_id, carrier_map.headers_);
     } catch (...) {
       _social_graph_client_pool->Remove(social_graph_client_wrapper);
       LOG(error) << "Failed to insert user to social-graph-service";
@@ -428,38 +417,35 @@ void UserHandler::RegisterUser(
     _social_graph_client_pool->Keepalive(social_graph_client_wrapper);
   }
 
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
 }
 
 void UserHandler::ComposeCreatorWithUsername(
     Creator &_return, const int64_t req_id, const std::string &username,
-    const std::map<std::string, std::string> &carrier) {    // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
+    const std::map<std::string, std::string> &carrier) {    
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("user_handler_tracer");
-    auto span_OTEL = tracer->StartSpan("ComposeCreatorWithUsername");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
 
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "compose_creator_server", {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  auto span_OTEL = get_tracer("user_handler_tracer")->StartSpan("ComposeCreatorWithUsername", options);
+  auto scope = get_tracer("user_handler_tracer")->WithActiveSpan(span_OTEL);
+
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "compose_creator_server", {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   size_t user_id_size;
   uint32_t memcached_flags;
@@ -469,14 +455,13 @@ void UserHandler::ComposeCreatorWithUsername(
       memcached_pool_pop(_memcached_client_pool, true, &memcached_rc);
   char *user_id_mmc;
   if (memcached_client) {
-    auto id_get_span = opentracing::Tracer::Global()->StartSpan(
-        "user_mmc_get_client", {opentracing::ChildOf(&span->context())});
-    id_get_span->SetTag("span.kind","client");
+    // auto id_get_span = opentracing::Tracer::Global()->StartSpan(
+    //     "user_mmc_get_client", {opentracing::ChildOf(&span->context())}); //TODO replace
     user_id_mmc =
         memcached_get(memcached_client, (username + ":user_id").c_str(),
                       (username + ":user_id").length(), &user_id_size,
                       &memcached_flags, &memcached_rc);
-    id_get_span->Finish();
+    // id_get_span->Finish();
     if (!user_id_mmc && memcached_rc != MEMCACHED_NOTFOUND) {
       ServiceException se;
       se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
@@ -520,14 +505,13 @@ void UserHandler::ComposeCreatorWithUsername(
     bson_t *query = bson_new();
     BSON_APPEND_UTF8(query, "username", username.c_str());
 
-    auto find_span = opentracing::Tracer::Global()->StartSpan(
-        "user_mongo_find_client", {opentracing::ChildOf(&span->context())});
-    find_span->SetTag("span.kind","client");
+    // auto find_span = opentracing::Tracer::Global()->StartSpan(
+    //     "user_mongo_find_client", {opentracing::ChildOf(&span->context())}); TODO repalce
     mongoc_cursor_t *cursor =
         mongoc_collection_find_with_opts(collection, query, nullptr, nullptr);
     const bson_t *doc;
     bool found = mongoc_cursor_next(cursor, &doc);
-    find_span->Finish();
+    // find_span->Finish();
     if (!found) {
       bson_error_t error;
       if (mongoc_cursor_error(cursor, &error)) {
@@ -588,16 +572,26 @@ void UserHandler::ComposeCreatorWithUsername(
       memcached_pool_pop(_memcached_client_pool, true, &memcached_rc);
   if (memcached_client) {
     if (user_id != -1 && !cached) {
-      auto id_set_span = opentracing::Tracer::Global()->StartSpan(
-          "user_mmc_set_cilent", {opentracing::ChildOf(&span->context())});
-      id_set_span->SetTag("span.kind","client");
+      StartSpanOptions id_set_options;
+      id_set_options.kind = SpanKind::kClient;  // client
+      
+      auto id_set_span = get_tracer("user_handler_tracer")->StartSpan("MMC-Set-Client", id_set_options);
+      auto id_set_scope = get_tracer("user_handler_tracer")->WithActiveSpan(id_set_span);
+      auto id_set_ctx = context::RuntimeContext::GetCurrent();
+      HttpTextMapCarrier<std::map<std::string, std::string>> id_set_carrier;
+      auto id_set_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+      id_set_prop->Inject(id_set_carrier, id_set_ctx);
+
+      // auto id_set_span = opentracing::Tracer::Global()->StartSpan(
+      //     "user_mmc_set_cilent", {opentracing::ChildOf(&span->context())});
       std::string user_id_str = std::to_string(user_id);
       memcached_rc =
           memcached_set(memcached_client, (username + ":user_id").c_str(),
                         (username + ":user_id").length(), user_id_str.c_str(),
                         user_id_str.length(), static_cast<time_t>(0),
                         static_cast<uint32_t>(0));
-      id_set_span->Finish();
+      // id_set_span->Finish();
+      id_set_span->End();
       if (memcached_rc != MEMCACHED_SUCCESS) {
         LOG(warning) << "Failed to set the user_id of user " << username
                      << " to Memcached: "
@@ -608,7 +602,7 @@ void UserHandler::ComposeCreatorWithUsername(
   } else {
     LOG(warning) << "Failed to pop a client from memcached pool";
   }
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
 }
 
@@ -617,25 +611,20 @@ void UserHandler::ComposeCreatorWithUserId(
     const std::string &username,
     const std::map<std::string, std::string> &carrier) {
 
-for (auto const &pair: carrier) {
-        LOG(error) << "{" << pair.first << ": " << pair.second << "}\n";
-    }
-  std::map<std::string, std::string> map_copy(carrier);
-  TextMapCarrier reader1(map_copy);
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer;
-    auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = context::RuntimeContext::GetCurrent();
-    auto new_context = prop->Extract(reader1, current_ctx);
-    options.parent   = GetSpan(new_context)->GetContext();
-     auto span1 = trace::Provider::GetTracerProvider()->GetTracer("abc")->StartSpan("OT-User_service_client",options);
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    auto scope = trace::Provider::GetTracerProvider()->GetTracer("abc")->WithActiveSpan(span1);
-    prop->Inject(reader1, new_context);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
 
-    span1->End();
-
-    LOG(error) << "Span Done ..";
+  auto span_OTEL = get_tracer("user_handler_tracer")->StartSpan("ComposeCreatorWithUserId", options);
+  auto scope = get_tracer("user_handler_tracer")->WithActiveSpan(span_OTEL);
+  
 
   // TextMapReader reader(carrier);
   // std::map<std::string, std::string> writer_text_map;
@@ -652,37 +641,35 @@ for (auto const &pair: carrier) {
   _return = creator;
 
   // span->Finish();
+  span_OTEL->End();
 }
 
 void UserHandler::Login(std::string &_return, int64_t req_id,
                         const std::string &username,
                         const std::string &password,
                         const std::map<std::string, std::string> &carrier) {
-    // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("user_handler_tracer");
-    auto span_OTEL = tracer->StartSpan("Login");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "login_server", {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
+
+  auto span_OTEL = get_tracer("user_handler_tracer")->StartSpan("Login", options);
+  auto scope = get_tracer("user_handler_tracer")->WithActiveSpan(span_OTEL);
+  
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "login_server", {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   size_t login_size;
   uint32_t memcached_flags;
@@ -694,13 +681,23 @@ void UserHandler::Login(std::string &_return, int64_t req_id,
   if (!memcached_client) {
     LOG(warning) << "Failed to pop a client from memcached pool";
   } else {
-    auto get_login_span = opentracing::Tracer::Global()->StartSpan(
-        "user_mmc_get_client", {opentracing::ChildOf(&span->context())});
-    get_login_span->SetTag("span.kind","client");
+    // auto get_login_span = opentracing::Tracer::Global()->StartSpan(
+    //     "user_mmc_get_client", {opentracing::ChildOf(&span->context())});
+    StartSpanOptions get_login_options;
+    get_login_options.kind = SpanKind::kClient;  // client
+    
+    auto get_login_span = get_tracer("user_handler_tracer")->StartSpan("MMC-Get-Client", get_login_options);
+    auto get_login_scope = get_tracer("user_handler_tracer")->WithActiveSpan(get_login_span);
+    auto get_login_ctx = context::RuntimeContext::GetCurrent();
+    HttpTextMapCarrier<std::map<std::string, std::string>> get_login_carrier;
+    auto get_login_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+    get_login_prop->Inject(get_login_carrier, get_login_ctx);
+
     login_mmc = memcached_get(memcached_client, (username + ":login").c_str(),
                               (username + ":login").length(), &login_size,
                               &memcached_flags, &memcached_rc);
-    get_login_span->Finish();
+    // get_login_span->Finish();
+    get_login_span->End();
     if (!login_mmc && memcached_rc != MEMCACHED_NOTFOUND) {
       LOG(warning) << "Memcached error: "
                    << memcached_strerror(memcached_client, memcached_rc);
@@ -748,14 +745,25 @@ void UserHandler::Login(std::string &_return, int64_t req_id,
     bson_t *query = bson_new();
     BSON_APPEND_UTF8(query, "username", username.c_str());
 
-    auto find_span = opentracing::Tracer::Global()->StartSpan(
-        "user_mongo_find_client", {opentracing::ChildOf(&span->context())});
-    find_span->SetTag("span.kind","client");
+    // auto find_span = opentracing::Tracer::Global()->StartSpan(
+    //     "user_mongo_find_client", {opentracing::ChildOf(&span->context())});
+
+     StartSpanOptions find_options;
+      find_options.kind = SpanKind::kClient;  // client
+      
+      auto find_span = get_tracer("compose_user_mentions_tracer")->StartSpan("Mongo-Find-Client", find_options);
+      auto find_scope = get_tracer("compose_user_mentions_tracer")->WithActiveSpan(find_span);
+      auto find_ctx = context::RuntimeContext::GetCurrent();
+      HttpTextMapCarrier<std::map<std::string, std::string>> find_carrier;
+      auto find_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+      find_prop->Inject(find_carrier, find_ctx);
+
     mongoc_cursor_t *cursor =
         mongoc_collection_find_with_opts(collection, query, nullptr, nullptr);
     const bson_t *doc;
     bool found = mongoc_cursor_next(cursor, &doc);
-    find_span->Finish();
+    // find_span->Finish();
+    find_span->End();
 
     bson_error_t error;
     if (mongoc_cursor_error(cursor, &error)) {
@@ -846,15 +854,26 @@ void UserHandler::Login(std::string &_return, int64_t req_id,
     if (!memcached_client) {
       LOG(warning) << "Failed to pop a client from memcached pool";
     } else {
-      auto set_login_span = opentracing::Tracer::Global()->StartSpan(
-          "user_mmc_set_client", {opentracing::ChildOf(&span->context())});
-      set_login_span->SetTag("span.kind","client");
+      // auto set_login_span = opentracing::Tracer::Global()->StartSpan(
+      //     "user_mmc_set_client", {opentracing::ChildOf(&span->context())});
+
+      StartSpanOptions set_login_options;
+      set_login_options.kind = SpanKind::kClient;  // client
+      
+      auto set_login_span = get_tracer("user_handler_tracer")->StartSpan("MMC-Set-Client", set_login_options);
+      auto set_login_scope = get_tracer("user_handler_tracer")->WithActiveSpan(set_login_span);
+      auto set_login_ctx = context::RuntimeContext::GetCurrent();
+      HttpTextMapCarrier<std::map<std::string, std::string>> set_login_carrier;
+      auto set_login_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+      set_login_prop->Inject(set_login_carrier, set_login_ctx);
+
       std::string login_str = login_json.dump();
       memcached_rc =
           memcached_set(memcached_client, (username + ":login").c_str(),
                         (username + ":login").length(), login_str.c_str(),
                         login_str.length(), 0, 0);
-      set_login_span->Finish();
+      // set_login_span->Finish();
+      set_login_span->End();
       if (memcached_rc != MEMCACHED_SUCCESS) {
         LOG(warning) << "Failed to set the login info of user " << username
                      << " to Memcached: "
@@ -863,37 +882,34 @@ void UserHandler::Login(std::string &_return, int64_t req_id,
       memcached_pool_push(_memcached_client_pool, memcached_client);
     }
   }
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
 }
 int64_t UserHandler::GetUserId(
     int64_t req_id, const std::string &username,
     const std::map<std::string, std::string> &carrier) {
-      // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("user_handler_tracer");
-    auto span_OTEL = tracer->StartSpan("GetUserId");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "get_user_id_server", {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
+
+  auto span_OTEL = get_tracer("user_handler_tracer")->StartSpan("GetUserId", options);
+  auto scope = get_tracer("user_handler_tracer")->WithActiveSpan(span_OTEL);
+
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "get_user_id_server", {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   size_t user_id_size;
   uint32_t memcached_flags;
@@ -903,15 +919,26 @@ int64_t UserHandler::GetUserId(
       memcached_pool_pop(_memcached_client_pool, true, &memcached_rc);
   char *user_id_mmc;
   if (memcached_client) {
-    auto id_get_span = opentracing::Tracer::Global()->StartSpan(
-        "user_mmc_get_user_id_client",
-        {opentracing::ChildOf(&span->context())});
-    id_get_span->SetTag("span.kind","client");
+    // auto id_get_span = opentracing::Tracer::Global()->StartSpan(
+    //     "user_mmc_get_user_id_client",
+    //     {opentracing::ChildOf(&span->context())});
+
+    StartSpanOptions id_get_options;
+    id_get_options.kind = SpanKind::kClient;  // client
+    
+    auto id_get_span = get_tracer("user_handler_tracer")->StartSpan("MMC-Get-Client", id_get_options);
+    auto id_get_scope = get_tracer("user_handler_tracer")->WithActiveSpan(id_get_span);
+    auto id_get_ctx = context::RuntimeContext::GetCurrent();
+    HttpTextMapCarrier<std::map<std::string, std::string>> id_get_carrier;
+    auto id_get_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+    id_get_prop->Inject(id_get_carrier, id_get_ctx);
+
     user_id_mmc =
         memcached_get(memcached_client, (username + ":user_id").c_str(),
                       (username + ":user_id").length(), &user_id_size,
                       &memcached_flags, &memcached_rc);
-    id_get_span->Finish();
+    // id_get_span->Finish();
+    id_get_span->End();
     if (!user_id_mmc && memcached_rc != MEMCACHED_NOTFOUND) {
       ServiceException se;
       se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
@@ -953,14 +980,25 @@ int64_t UserHandler::GetUserId(
     bson_t *query = bson_new();
     BSON_APPEND_UTF8(query, "username", username.c_str());
 
-    auto find_span = opentracing::Tracer::Global()->StartSpan(
-        "user_mongo_find_client", {opentracing::ChildOf(&span->context())});
-    find_span->SetTag("span.kind","client");
+    // auto find_span = opentracing::Tracer::Global()->StartSpan(
+    //     "user_mongo_find_client", {opentracing::ChildOf(&span->context())});
+
+     StartSpanOptions find_options;
+    find_options.kind = SpanKind::kClient;  // client
+    
+    auto find_span = get_tracer("user_handler_tracer")->StartSpan("Mongo-Find-Client", find_options);
+    auto find_scope = get_tracer("user_handler_tracer")->WithActiveSpan(find_span);
+    auto find_ctx = context::RuntimeContext::GetCurrent();
+    HttpTextMapCarrier<std::map<std::string, std::string>> find_carrier;
+    auto find_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+    find_prop->Inject(find_carrier, find_ctx);
+
     mongoc_cursor_t *cursor =
         mongoc_collection_find_with_opts(collection, query, nullptr, nullptr);
     const bson_t *doc;
     bool found = mongoc_cursor_next(cursor, &doc);
-    find_span->Finish();
+    // find_span->Finish();
+    find_span->End();
     if (!found) {
       bson_error_t error;
       if (mongoc_cursor_error(cursor, &error)) {
@@ -1016,14 +1054,25 @@ int64_t UserHandler::GetUserId(
       LOG(warning) << "Failed to pop a client from memcached pool";
     } else {
       std::string user_id_str = std::to_string(user_id);
-      auto set_login_span = opentracing::Tracer::Global()->StartSpan(
-          "user_mmc_set_client", {opentracing::ChildOf(&span->context())});
-      set_login_span->SetTag("span.kind","client");
+      // auto set_login_span = opentracing::Tracer::Global()->StartSpan(
+      //     "user_mmc_set_client", {opentracing::ChildOf(&span->context())});
+
+      StartSpanOptions set_options;
+      set_options.kind = SpanKind::kClient;  // client
+      
+      auto set_span = get_tracer("user_handler_tracer")->StartSpan("MMC-Set-Client", set_options);
+      auto set_scope = get_tracer("user_handler_tracer")->WithActiveSpan(set_span);
+      auto set_ctx = context::RuntimeContext::GetCurrent();
+      HttpTextMapCarrier<std::map<std::string, std::string>> set_carrier;
+      auto set_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+      set_prop->Inject(set_carrier, set_ctx);
+
       memcached_rc =
           memcached_set(memcached_client, (username + ":user_id").c_str(),
                         (username + ":user_id").length(), user_id_str.c_str(),
                         user_id_str.length(), 0, 0);
-      set_login_span->Finish();
+      // set_login_span->Finish();
+      set_span->End();
       if (memcached_rc != MEMCACHED_SUCCESS) {
         LOG(warning) << "Failed to set the login info of user " << username
                      << " to Memcached: "
@@ -1033,7 +1082,7 @@ int64_t UserHandler::GetUserId(
     }
   }
 
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
   return user_id;
 }

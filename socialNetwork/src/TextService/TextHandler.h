@@ -43,32 +43,28 @@ TextHandler::TextHandler(
 void TextHandler::ComposeText(
     TextServiceReturn &_return, int64_t req_id, const std::string &text,
     const std::map<std::string, std::string> &carrier) {
-          // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("text_handler_trace");
-    auto span_OTEL = tracer->StartSpan("ComposeText");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
-  // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "compose_text_server", {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
+
+  auto span_OTEL = get_tracer("text_handler_trace")->StartSpan("ComposeText", options);
+  auto scope = get_tracer("text_handler_trace")->WithActiveSpan(span_OTEL);
+  // // Initialize a span
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "compose_text_server", {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   std::vector<std::string> mention_usernames;
   std::smatch m;
@@ -91,12 +87,23 @@ void TextHandler::ComposeText(
   }
 
   auto shortened_urls_future = std::async(std::launch::async, [&]() {
-    auto url_span = opentracing::Tracer::Global()->StartSpan(
-        "compose_urls_client", {opentracing::ChildOf(&span->context())});
-    url_span->SetTag("span.kind","client");
-    std::map<std::string, std::string> url_writer_text_map;
-    TextMapWriter url_writer(url_writer_text_map);
-    opentracing::Tracer::Global()->Inject(url_span->context(), url_writer);
+
+    StartSpanOptions url_options;
+    url_options.kind = SpanKind::kClient;  // client
+    
+    auto url_span = get_tracer("text_handler_trace")->StartSpan("Compose-Urls-Client", url_options);
+    auto url_scope = get_tracer("text_handler_trace")->WithActiveSpan(url_span);
+    auto url_ctx = context::RuntimeContext::GetCurrent();
+    HttpTextMapCarrier<std::map<std::string, std::string>> url_carrier;
+    auto url_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+    url_prop->Inject(url_carrier, url_ctx);
+
+    // auto url_span = opentracing::Tracer::Global()->StartSpan(
+    //     "compose_urls_client", {opentracing::ChildOf(&span->context())});
+
+    // std::map<std::string, std::string> url_writer_text_map;
+    // TextMapWriter url_writer(url_writer_text_map);
+    // opentracing::Tracer::Global()->Inject(url_span->context(), url_writer);
 
     auto url_client_wrapper = _url_client_pool->Pop();
     if (!url_client_wrapper) {
@@ -108,25 +115,36 @@ void TextHandler::ComposeText(
     std::vector<Url> _return_urls;
     auto url_client = url_client_wrapper->GetClient();
     try {
-      url_client->ComposeUrls(_return_urls, req_id, urls, url_writer_text_map);
+      url_client->ComposeUrls(_return_urls, req_id, urls, url_carrier.headers_);
     } catch (...) {
       LOG(error) << "Failed to upload urls to url-shorten-service";
       _url_client_pool->Remove(url_client_wrapper);
       throw;
     }
     _url_client_pool->Keepalive(url_client_wrapper);
+    url_span->End();
     return _return_urls;
   });
 
   auto user_mention_future = std::async(std::launch::async, [&]() {
-    auto user_mention_span = opentracing::Tracer::Global()->StartSpan(
-        "compose_user_mentions_client",
-        {opentracing::ChildOf(&span->context())});
-    user_mention_span->SetTag("span.kind","client");
-    std::map<std::string, std::string> user_mention_writer_text_map;
-    TextMapWriter user_mention_writer(user_mention_writer_text_map);
-    opentracing::Tracer::Global()->Inject(user_mention_span->context(),
-                                          user_mention_writer);
+    // auto user_mention_span = opentracing::Tracer::Global()->StartSpan(
+    //     "compose_user_mentions_client",
+    //     {opentracing::ChildOf(&span->context())});
+
+    // std::map<std::string, std::string> user_mention_writer_text_map;
+    // TextMapWriter user_mention_writer(user_mention_writer_text_map);
+    // opentracing::Tracer::Global()->Inject(user_mention_span->context(),
+    //                                       user_mention_writer);
+    // TODO: maybe wrong because of the other started span, maybe context should be related to main span
+    StartSpanOptions mention_options;
+    mention_options.kind = SpanKind::kClient;  // client
+    
+    auto mention_span = get_tracer("text_handler_trace")->StartSpan("Compose-User-Mentions-Client", mention_options);
+    auto mention_scope = get_tracer("text_handler_trace")->WithActiveSpan(mention_span);
+    auto mention_ctx = context::RuntimeContext::GetCurrent();
+    HttpTextMapCarrier<std::map<std::string, std::string>> mention_carrier;
+    auto mention_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+    mention_prop->Inject(mention_carrier, mention_ctx);
 
     auto user_mention_client_wrapper = _user_mention_client_pool->Pop();
     if (!user_mention_client_wrapper) {
@@ -140,7 +158,7 @@ void TextHandler::ComposeText(
     try {
       user_mention_client->ComposeUserMentions(_return_user_mentions, req_id,
                                                mention_usernames,
-                                               user_mention_writer_text_map);
+                                               mention_carrier.headers_);
     } catch (...) {
       LOG(error) << "Failed to upload user_mentions to user-mention-service";
       _user_mention_client_pool->Remove(user_mention_client_wrapper);
@@ -148,6 +166,7 @@ void TextHandler::ComposeText(
     }
 
     _user_mention_client_pool->Keepalive(user_mention_client_wrapper);
+    mention_span->End();
     return _return_user_mentions;
   });
 
@@ -185,7 +204,7 @@ void TextHandler::ComposeText(
   _return.user_mentions = user_mentions;
   _return.text = updated_text;
   _return.urls = target_urls;
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
 }
 

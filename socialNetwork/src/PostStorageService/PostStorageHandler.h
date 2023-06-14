@@ -55,32 +55,30 @@ PostStorageHandler::PostStorageHandler(
 void PostStorageHandler::StorePost(
     int64_t req_id, const social_network::Post &post,
     const std::map<std::string, std::string> &carrier) {
-      // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("post_storage_tracer");
-    auto span_OTEL = tracer->StartSpan("StorePost");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
-  // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "store_post_server", {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
+
+  auto span_OTEL = get_tracer("post_storage_tracer")->StartSpan("StorePost", options);
+  auto scope = get_tracer("post_storage_tracer")->WithActiveSpan(span_OTEL);
+
+  StartSpanOptions mongo_options;
+  mongo_options.kind = SpanKind::kClient;  // client
+  
+  auto mongo_span = get_tracer("post_storage_tracer")->StartSpan("Mongo-Insert-Client", mongo_options);
+  auto mongo_scope = get_tracer("post_storage_tracer")->WithActiveSpan(mongo_span);
+  auto mongo_ctx = context::RuntimeContext::GetCurrent();
+  HttpTextMapCarrier<std::map<std::string, std::string>> mongo_carrier;
+  auto mongo_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  mongo_prop->Inject(mongo_carrier, mongo_ctx);
 
   mongoc_client_t *mongodb_client =
       mongoc_client_pool_pop(_mongodb_client_pool);
@@ -161,13 +159,13 @@ void PostStorageHandler::StorePost(
   bson_append_array_end(new_doc, &media_list);
 
   bson_error_t error;
-  auto insert_span = opentracing::Tracer::Global()->StartSpan(
-      "post_storage_mongo_insert_client",
-      {opentracing::ChildOf(&span->context())});
-  insert_span->SetTag("span.kind","client");
+  // auto insert_span = opentracing::Tracer::Global()->StartSpan(
+  //     "post_storage_mongo_insert_client",
+  //     {opentracing::ChildOf(&span->context())});
   bool inserted = mongoc_collection_insert_one(collection, new_doc, nullptr,
                                                nullptr, &error);
-  insert_span->Finish();
+  // mongo_span->Finish();
+  mongo_span->End();
 
   if (!inserted) {
     LOG(error) << "Error: Failed to insert post to MongoDB: " << error.message;
@@ -184,39 +182,35 @@ void PostStorageHandler::StorePost(
   mongoc_collection_destroy(collection);
   mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
 
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
 }
 
 void PostStorageHandler::ReadPost(
     Post &_return, int64_t req_id, int64_t post_id,
     const std::map<std::string, std::string> &carrier) {
-      // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("post_storage_traces");
-    auto span_OTEL = tracer->StartSpan("ReadPost");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
-  // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "read_post_server", {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
+
+  auto span_OTEL = get_tracer("post_storage_tracer")->StartSpan("ReadPost", options);
+  auto scope = get_tracer("post_storage_tracer")->WithActiveSpan(span_OTEL);
+  // // Initialize a span
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "read_post_server", {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   std::string post_id_str = std::to_string(post_id);
 
@@ -232,9 +226,19 @@ void PostStorageHandler::ReadPost(
 
   size_t post_mmc_size;
   uint32_t memcached_flags;
-  auto get_span = opentracing::Tracer::Global()->StartSpan(
-      "post_storage_mmc_get_client", {opentracing::ChildOf(&span->context())});
-  get_span->SetTag("span.kind","client");
+  // auto get_span = opentracing::Tracer::Global()->StartSpan(
+  //     "post_storage_mmc_get_client", {opentracing::ChildOf(&span->context())});
+
+  StartSpanOptions get_options;
+  get_options.kind = SpanKind::kClient;  // client
+  
+  auto get_span = get_tracer("post_storage_tracer")->StartSpan("MMC-Get-Client", get_options);
+  auto get_scope = get_tracer("post_storage_tracer")->WithActiveSpan(get_span);
+  auto get_ctx = context::RuntimeContext::GetCurrent();
+  HttpTextMapCarrier<std::map<std::string, std::string>> get_carrier;
+  auto get_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  get_prop->Inject(get_carrier, get_ctx);
+
   char *post_mmc =
       memcached_get(memcached_client, post_id_str.c_str(), post_id_str.length(),
                     &post_mmc_size, &memcached_flags, &memcached_rc);
@@ -246,7 +250,8 @@ void PostStorageHandler::ReadPost(
     throw se;
   }
   memcached_pool_push(_memcached_client_pool, memcached_client);
-  get_span->Finish();
+  // get_span->Finish();
+  get_span->End();
 
   if (post_mmc) {
     LOG(debug) << "Get post " << post_id << " cache hit from Memcached";
@@ -301,15 +306,27 @@ void PostStorageHandler::ReadPost(
 
     bson_t *query = bson_new();
     BSON_APPEND_INT64(query, "post_id", post_id);
-    auto find_span = opentracing::Tracer::Global()->StartSpan(
-        "post_storage_mongo_find_client",
-        {opentracing::ChildOf(&span->context())});
-    find_span->SetTag("span.kind","client");
+
+    // auto find_span = opentracing::Tracer::Global()->StartSpan(
+    //     "post_storage_mongo_find_client",
+    //     {opentracing::ChildOf(&span->context())});
+
+    StartSpanOptions find_options;
+    find_options.kind = SpanKind::kClient;  // client
+    
+    auto find_span = get_tracer("post_storage_tracer")->StartSpan("Mongo-Find-Client", find_options);
+    auto find_scope = get_tracer("post_storage_tracer")->WithActiveSpan(find_span);
+    auto find_ctx = context::RuntimeContext::GetCurrent();
+    HttpTextMapCarrier<std::map<std::string, std::string>> find_carrier;
+    auto find_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+    find_prop->Inject(find_carrier, find_ctx);
+
     mongoc_cursor_t *cursor =
         mongoc_collection_find_with_opts(collection, query, nullptr, nullptr);
     const bson_t *doc;
     bool found = mongoc_cursor_next(cursor, &doc);
-    find_span->Finish();
+    // find_span->Finish();
+    find_span->End();
     if (!found) {
       bson_error_t error;
       if (mongoc_cursor_error(cursor, &error)) {
@@ -377,10 +394,20 @@ void PostStorageHandler::ReadPost(
         se.message = "Failed to pop a client from memcached pool";
         throw se;
       }
-      auto set_span = opentracing::Tracer::Global()->StartSpan(
-          "post_storage_mmc_set_client",
-          {opentracing::ChildOf(&span->context())});
-      set_span->SetTag("span.kind","client");
+      // auto set_span = opentracing::Tracer::Global()->StartSpan(
+      //     "post_storage_mmc_set_client",
+      //     {opentracing::ChildOf(&span->context())});
+
+      StartSpanOptions set_options;
+      set_options.kind = SpanKind::kClient;  // client
+      
+      auto set_span = get_tracer("post_storage_tracer")->StartSpan("MMC-Set-Client", set_options);
+      auto set_scope = get_tracer("post_storage_tracer")->WithActiveSpan(set_span);
+      auto set_ctx = context::RuntimeContext::GetCurrent();
+      HttpTextMapCarrier<std::map<std::string, std::string>> set_carrier;
+      auto set_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+      set_prop->Inject(set_carrier, set_ctx);
+
       memcached_rc = memcached_set(
           memcached_client, post_id_str.c_str(), post_id_str.length(),
           post_json_char, std::strlen(post_json_char), static_cast<time_t>(0),
@@ -389,46 +416,43 @@ void PostStorageHandler::ReadPost(
         LOG(warning) << "Failed to set post to Memcached: "
                      << memcached_strerror(memcached_client, memcached_rc);
       }
-      set_span->Finish();
+      // set_span->Finish();
+      set_span->End();
       bson_free(post_json_char);
       memcached_pool_push(_memcached_client_pool, memcached_client);
     }
   }
 
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
 }
 void PostStorageHandler::ReadPosts(
     std::vector<Post> &_return, int64_t req_id,
     const std::vector<int64_t> &post_ids,
     const std::map<std::string, std::string> &carrier) {
-      // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
+    
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("post_storage_tracer");
-    auto span_OTEL = tracer->StartSpan("ReadPosts");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
-  // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "post_storage_read_posts_server",
-      {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  auto span_OTEL = get_tracer("post_storage_tracer")->StartSpan("ReadPosts", options);
+  auto scope = get_tracer("post_storage_tracer")->WithActiveSpan(span_OTEL);
+  // // Initialize a span
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "post_storage_read_posts_server",
+  //     {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   if (post_ids.empty()) {
     return;
@@ -482,9 +506,20 @@ void PostStorageHandler::ReadPosts(
   char *return_value;
   size_t return_value_length;
   uint32_t flags;
-  auto get_span = opentracing::Tracer::Global()->StartSpan(
-      "post_storage_mmc_mget_client", {opentracing::ChildOf(&span->context())});
-  get_span->SetTag("span.kind","client");
+
+  // auto get_span = opentracing::Tracer::Global()->StartSpan(
+  //     "post_storage_mmc_mget_client", {opentracing::ChildOf(&span->context())});
+
+  StartSpanOptions get_options;
+  get_options.kind = SpanKind::kClient;  // client
+  
+  auto get_span = get_tracer("post_storage_tracer")->StartSpan("MMC-Get-Client", get_options);
+  auto get_scope = get_tracer("post_storage_tracer")->WithActiveSpan(get_span);
+  auto get_ctx = context::RuntimeContext::GetCurrent();
+  HttpTextMapCarrier<std::map<std::string, std::string>> get_carrier;
+  auto get_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  get_prop->Inject(get_carrier, get_ctx);
+
   while (true) {
     return_value =
         memcached_fetch(memcached_client, return_key, &return_key_length,
@@ -535,7 +570,9 @@ void PostStorageHandler::ReadPosts(
     post_ids_not_cached.erase(new_post.post_id);
     free(return_value);
   }
-  get_span->Finish();
+  // get_span->Finish();
+  get_span->End();
+
   memcached_quit(memcached_client);
   memcached_pool_push(_memcached_client_pool, memcached_client);
   for (int i = 0; i < post_ids.size(); ++i) {
@@ -586,9 +623,19 @@ void PostStorageHandler::ReadPosts(
         mongoc_collection_find_with_opts(collection, query, nullptr, nullptr);
     const bson_t *doc;
 
-    auto find_span = opentracing::Tracer::Global()->StartSpan(
-        "mongo_find_client", {opentracing::ChildOf(&span->context())});
-    find_span->SetTag("span.kind","client");
+    // auto find_span = opentracing::Tracer::Global()->StartSpan(
+    //     "mongo_find_client", {opentracing::ChildOf(&span->context())});
+
+    StartSpanOptions find_options;
+    find_options.kind = SpanKind::kClient;  // client
+    
+    auto find_span = get_tracer("post_storage_tracer")->StartSpan("Mongo-Find-Client", find_options);
+    auto find_scope = get_tracer("post_storage_tracer")->WithActiveSpan(find_span);
+    auto find_ctx = context::RuntimeContext::GetCurrent();
+    HttpTextMapCarrier<std::map<std::string, std::string>> find_carrier;
+    auto find_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+    find_prop->Inject(find_carrier, find_ctx);
+
     while (true) {
       bool found = mongoc_cursor_next(cursor, &doc);
       if (!found) {
@@ -626,7 +673,9 @@ void PostStorageHandler::ReadPosts(
       return_map.insert({new_post.post_id, new_post});
       bson_free(post_json_char);
     }
-    find_span->Finish();
+    // find_span->Finish();
+    find_span->End();
+
     bson_error_t error;
     if (mongoc_cursor_error(cursor, &error)) {
       LOG(warning) << error.message;
@@ -656,9 +705,19 @@ void PostStorageHandler::ReadPosts(
         se.message = "Failed to pop a client from memcached pool";
         throw se;
       }
-      auto set_span = opentracing::Tracer::Global()->StartSpan(
-          "mmc_set_client", {opentracing::ChildOf(&span->context())});
-      set_span->SetTag("span.kind","client");
+      // auto set_span = opentracing::Tracer::Global()->StartSpan(
+      //     "mmc_set_client", {opentracing::ChildOf(&span->context())});
+
+    StartSpanOptions set_options;
+    set_options.kind = SpanKind::kClient;  // client
+    
+    auto set_span = get_tracer("post_storage_tracer")->StartSpan("MMC-Set-Client", set_options);
+    auto set_scope = get_tracer("post_storage_tracer")->WithActiveSpan(set_span);
+    auto set_ctx = context::RuntimeContext::GetCurrent();
+    HttpTextMapCarrier<std::map<std::string, std::string>> set_carrier;
+    auto set_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+    set_prop->Inject(set_carrier, set_ctx);
+
       for (auto &it : post_json_map) {
         std::string id_str = std::to_string(it.first);
         _rc = memcached_set(_memcached_client, id_str.c_str(), id_str.length(),
@@ -666,7 +725,8 @@ void PostStorageHandler::ReadPosts(
                             static_cast<time_t>(0), static_cast<uint32_t>(0));
       }
       memcached_pool_push(_memcached_client_pool, _memcached_client);
-      set_span->Finish();
+      // set_span->Finish();
+      set_span->End();
     }));
   }
 

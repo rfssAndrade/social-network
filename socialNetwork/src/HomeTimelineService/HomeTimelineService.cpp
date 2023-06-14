@@ -51,6 +51,7 @@ int main(int argc, char *argv[]) {
   }
 
   SetUpTracer("config/jaeger-config.yml", "home-timeline-service");
+  auto root_span = get_tracer("home_timeline_tracer")->StartSpan("HomeTimelineService");
 
   json config_json;
   if (load_config_file("config/service-config.json", &config_json) != 0) {
@@ -99,6 +100,8 @@ int main(int argc, char *argv[]) {
 
     LOG(info) << "Starting the home-timeline-service server...";
     server.serve();
+    root_span->End();
+    CleanupTracer();
   } else {
     Redis redis_client_pool =
         init_redis_client_pool(config_json, "home-timeline");
@@ -112,5 +115,7 @@ int main(int argc, char *argv[]) {
 
     LOG(info) << "Starting the home-timeline-service server...";
     server.serve();
+    root_span->End();
+    CleanupTracer();
   }
 }

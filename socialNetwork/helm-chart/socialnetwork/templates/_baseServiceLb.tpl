@@ -4,6 +4,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Values.name }}-lb
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
 spec:
   type: LoadBalancer
   ports:

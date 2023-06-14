@@ -47,33 +47,29 @@ void UserMentionHandler::ComposeUserMentions(
     std::vector<UserMention> &_return, int64_t req_id,
     const std::vector<std::string> &usernames,
     const std::map<std::string, std::string> &carrier) {
-      // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("compose_user_mentions_tracer");
-    auto span_OTEL = tracer->StartSpan("ComposeUserMentions");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
-  // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "compose_user_mentions_server",
-      {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
+
+  auto span_OTEL = get_tracer("compose_user_mentions_tracer")->StartSpan("ComposeUserMentions", options);
+  auto scope = get_tracer("compose_user_mentions_tracer")->WithActiveSpan(span_OTEL);
+  // // Initialize a span
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "compose_user_mentions_server",
+  //     {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   std::vector<UserMention> user_mentions;
   if (!usernames.empty()) {
@@ -106,10 +102,20 @@ void UserMentionHandler::ComposeUserMentions(
       idx++;
     }
 
-    auto get_span = opentracing::Tracer::Global()->StartSpan(
-        "compose_user_mentions_memcached_get_client",
-        {opentracing::ChildOf(&span->context())});
-    get_span->SetTag("span.kind","client");
+    // auto get_span = opentracing::Tracer::Global()->StartSpan(
+    //     "compose_user_mentions_memcached_get_client",
+    //     {opentracing::ChildOf(&span->context())});
+
+    StartSpanOptions get_options;
+    get_options.kind = SpanKind::kClient;  // client
+    
+    auto get_span = get_tracer("compose_user_mentions_tracer")->StartSpan("Memcached-Get-Client", get_options);
+    auto get_scope = get_tracer("compose_user_mentions_tracer")->WithActiveSpan(get_span);
+    auto get_ctx = context::RuntimeContext::GetCurrent();
+    HttpTextMapCarrier<std::map<std::string, std::string>> get_carrier;
+    auto get_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+    get_prop->Inject(get_carrier, get_ctx);
+
     rc = memcached_mget(client, keys, key_sizes, usernames.size());
     if (rc != MEMCACHED_SUCCESS) {
       LOG(error) << "Cannot get usernames of request " << req_id << ": "
@@ -118,7 +124,8 @@ void UserMentionHandler::ComposeUserMentions(
       se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
       se.message = memcached_strerror(client, rc);
       memcached_pool_push(_memcached_client_pool, client);
-      get_span->Finish();
+      // get_span->Finish();
+      get_span->End();
       throw se;
     }
 
@@ -145,7 +152,8 @@ void UserMentionHandler::ComposeUserMentions(
         se.errorCode = ErrorCode::SE_MEMCACHED_ERROR;
         se.message =
             "Cannot get usernames of request " + std::to_string(req_id);
-        get_span->Finish();
+        // get_span->Finish();
+        get_span->End();
         throw se;
       }
       UserMention new_user_mention;
@@ -161,7 +169,8 @@ void UserMentionHandler::ComposeUserMentions(
     }
     memcached_quit(client);
     memcached_pool_push(_memcached_client_pool, client);
-    get_span->Finish();
+    // get_span->Finish();
+    get_span->End();
     for (int i = 0; i < usernames.size(); ++i) {
       delete keys[i];
     }
@@ -206,10 +215,21 @@ void UserMentionHandler::ComposeUserMentions(
       bson_append_array_end(&query_child_0, &query_username_list);
       bson_append_document_end(query, &query_child_0);
 
-      auto find_span = opentracing::Tracer::Global()->StartSpan(
-          "compose_user_mentions_mongo_find_client",
-          {opentracing::ChildOf(&span->context())});
-      find_span->SetTag("span.kind","client");
+      // auto find_span = opentracing::Tracer::Global()->StartSpan(
+      //     "compose_user_mentions_mongo_find_client",
+      //     {opentracing::ChildOf(&span->context())});
+
+      
+      StartSpanOptions find_options;
+      find_options.kind = SpanKind::kClient;  // client
+      
+      auto find_span = get_tracer("compose_user_mentions_tracer")->StartSpan("Mongo-Find-Client", find_options);
+      auto find_scope = get_tracer("compose_user_mentions_tracer")->WithActiveSpan(find_span);
+      auto find_ctx = context::RuntimeContext::GetCurrent();
+      HttpTextMapCarrier<std::map<std::string, std::string>> find_carrier;
+      auto find_prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+      find_prop->Inject(find_carrier, find_ctx);
+
       mongoc_cursor_t *cursor =
           mongoc_collection_find_with_opts(collection, query, nullptr, nullptr);
       const bson_t *doc;
@@ -227,7 +247,8 @@ void UserMentionHandler::ComposeUserMentions(
           mongoc_cursor_destroy(cursor);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          find_span->Finish();
+          // find_span->Finish();
+          find_span->End();
           throw se;
         }
         if (bson_iter_init_find(&iter, doc, "username")) {
@@ -240,7 +261,8 @@ void UserMentionHandler::ComposeUserMentions(
           mongoc_cursor_destroy(cursor);
           mongoc_collection_destroy(collection);
           mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-          find_span->Finish();
+          // find_span->Finish();
+          find_span->End();
           throw se;
         }
         user_mentions.emplace_back(new_user_mention);
@@ -249,12 +271,13 @@ void UserMentionHandler::ComposeUserMentions(
       mongoc_cursor_destroy(cursor);
       mongoc_collection_destroy(collection);
       mongoc_client_pool_push(_mongodb_client_pool, mongodb_client);
-      find_span->Finish();
+      // find_span->Finish();
+      find_span->End();
     }
   }
 
   _return = user_mentions;
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
 }
 

@@ -68,32 +68,45 @@ UniqueIdHandler::UniqueIdHandler(std::mutex *thread_lock,
 int64_t UniqueIdHandler::ComposeUniqueId(
     int64_t req_id, PostType::type post_type,
     const std::map<std::string, std::string> &carrier) {
-    // OTEL
-    StartSpanOptions options;
-    options.kind = SpanKind::kServer; // TODO
-    // TODO understand if its calling or being called by other services
+    // // OTEL
+    // StartSpanOptions options;
+    // options.kind = SpanKind::kServer; // TODO
+    // // TODO understand if its calling or being called by other services
 
-    auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-    auto tracer = provider->GetTracer("compose_unique_id_tracer");
-    auto span_OTEL = tracer->StartSpan("ComposeUniqueId");
-    auto scope = tracer->WithActiveSpan(span_OTEL);
+    // auto provider = opentelemetry::trace::Provider::GetTracerProvider();
+    // auto tracer = provider->GetTracer("compose_unique_id_tracer");
+    // auto span_OTEL = tracer->StartSpan("ComposeUniqueId");
+    // auto scope = tracer->WithActiveSpan(span_OTEL);
 
-    // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
-    std::map<std::string, std::string> map_copy(carrier);
-    TextMapCarrier carriermap(map_copy);
-    auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    propagator->Inject(carriermap, current_ctx);
-    // OTEL
-  // Initialize a span
-  TextMapReader reader(carrier);
-  std::map<std::string, std::string> writer_text_map;
-  TextMapWriter writer(writer_text_map);
-  auto parent_span = opentracing::Tracer::Global()->Extract(reader);
-  auto span = opentracing::Tracer::Global()->StartSpan(
-      "compose_unique_id_server", {opentracing::ChildOf(parent_span->get())});
-  span->SetTag("span.kind","server");
-  opentracing::Tracer::Global()->Inject(span->context(), writer);
+    // // HttpTextMapCarrier<opentelemetry::ext::http::client::Headers> carrier_OTEL;
+    // std::map<std::string, std::string> map_copy(carrier);
+    // TextMapCarrier carriermap(map_copy);
+    // auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+    // auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
+    // propagator->Inject(carriermap, current_ctx);
+    // // OTEL
+
+  StartSpanOptions options;
+  options.kind          = SpanKind::kServer;
+
+  std::map<std::string, std::string> &request_headers =
+        const_cast<std::map<std::string, std::string> &>(carrier);
+  const HttpTextMapCarrier<std::map<std::string, std::string>> carrier_map(request_headers);
+  auto prop        = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto new_context = prop->Extract(carrier_map, current_ctx);
+  options.parent   = GetSpan(new_context)->GetContext();
+
+  auto span_OTEL = get_tracer("compose_unique_id_tracer")->StartSpan("ComposeUniqueId", options);
+  auto scope = get_tracer("compose_unique_id_tracer")->WithActiveSpan(span_OTEL);
+  // // Initialize a span
+  // TextMapReader reader(carrier);
+  // std::map<std::string, std::string> writer_text_map;
+  // TextMapWriter writer(writer_text_map);
+  // auto parent_span = opentracing::Tracer::Global()->Extract(reader);
+  // auto span = opentracing::Tracer::Global()->StartSpan(
+  //     "compose_unique_id_server", {opentracing::ChildOf(parent_span->get())});
+  // opentracing::Tracer::Global()->Inject(span->context(), writer);
 
   _thread_lock->lock();
   int64_t timestamp =
@@ -129,7 +142,7 @@ int64_t UniqueIdHandler::ComposeUniqueId(
   int64_t post_id = stoul(post_id_str, nullptr, 16) & 0x7FFFFFFFFFFFFFFF;
   LOG(debug) << "The post_id of the request " << req_id << " is " << post_id;
 
-  span->Finish();
+  // span->Finish();
   span_OTEL->End();
   return post_id;
 }

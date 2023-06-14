@@ -57,6 +57,7 @@ int main(int argc, char *argv[]) {
 
     LOG(info) << "Starting the text-service server...";
     server.serve();
+    CleanupTracer();
   } else
     exit(EXIT_FAILURE);
 }

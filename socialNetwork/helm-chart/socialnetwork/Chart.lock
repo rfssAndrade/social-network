@@ -89,8 +89,5 @@ dependencies:
 - name: redis-cluster
   repository: https://charts.bitnami.com/bitnami
   version: 7.6.3
-- name: otel-collector
-  repository: ""
-  version: 0.1.0
-digest: sha256:70d75a1f435412aa3395c2904d25306fd3adc756852e9f65f70e09801697e161
-generated: "2022-10-17T13:54:18.259891+02:00"
+digest: sha256:0322995d5d8682baac63a4af0d76b03179ead7989ff131bcd08409148a25ec37
+generated: "2022-07-22T16:14:32.803085+02:00"

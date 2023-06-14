@@ -1,1 +1,0 @@
-{{ include "socialnetwork.templates.grafana.grafana-service-latency-dashboard.json"  . }}

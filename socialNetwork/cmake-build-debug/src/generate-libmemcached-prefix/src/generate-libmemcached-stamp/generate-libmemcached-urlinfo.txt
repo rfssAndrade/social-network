@@ -1,0 +1,12 @@
+# This is a generated file and its contents are an internal implementation detail.
+# The download step will be re-executed if anything in this file changes.
+# No other meaning or use of this file is supported.
+
+method=url
+command=C:/Program Files/JetBrains/CLion 2023.1.2/bin/cmake/win/x64/bin/cmake.exe;-P;C:/Users/andraderf/development/new/deathstarbenchmirror/socialNetwork/cmake-build-debug/src/generate-libmemcached-prefix/src/generate-libmemcached-stamp/download-generate-libmemcached.cmake;COMMAND;C:/Program Files/JetBrains/CLion 2023.1.2/bin/cmake/win/x64/bin/cmake.exe;-P;C:/Users/andraderf/development/new/deathstarbenchmirror/socialNetwork/cmake-build-debug/src/generate-libmemcached-prefix/src/generate-libmemcached-stamp/verify-generate-libmemcached.cmake;COMMAND;C:/Program Files/JetBrains/CLion 2023.1.2/bin/cmake/win/x64/bin/cmake.exe;-P;C:/Users/andraderf/development/new/deathstarbenchmirror/socialNetwork/cmake-build-debug/src/generate-libmemcached-prefix/src/generate-libmemcached-stamp/extract-generate-libmemcached.cmake
+source_dir=C:/Users/andraderf/development/new/deathstarbenchmirror/socialNetwork/cmake-build-debug/downloads/libmemcached
+work_dir=C:/Users/andraderf/development/new/deathstarbenchmirror/socialNetwork/cmake-build-debug/downloads
+url(s)=https://launchpad.net/libmemcached/1.0//+download/libmemcached-.tar.gz
+hash=
+no_extract=
+

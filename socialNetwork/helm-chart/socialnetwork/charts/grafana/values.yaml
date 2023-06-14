@@ -9,9 +9,6 @@ container:
   image: grafana/grafana-oss
   imageVersion: 9.1.4
   name: grafana
-  env:
-    - name: "GF_USERS_DEFAULT_THEME"     
-      value: "light"
 
 configMaps:
   - name: grafana-datasource.yaml
@@ -49,7 +46,3 @@ configMaps:
   - name: grafana-notification-policy.yaml
     mountPath: /etc/grafana/provisioning/alerting/grafana-notification-policy.yaml
     value: grafana-notification-policy
-
-  - name: grafana-service-latency-dashboard.json
-    mountPath: /etc/grafana/provisioning/dashboards/grafana-service-latency-dashboard.json
-    value: grafana-service-latency-dashboard

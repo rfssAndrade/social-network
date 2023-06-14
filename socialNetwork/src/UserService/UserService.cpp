@@ -93,4 +93,5 @@ int main(int argc, char *argv[]) {
       std::make_shared<TBinaryProtocolFactory>());
   LOG(info) << "Starting the user-service server ...";
   server.serve();
+  CleanupTracer();
 }

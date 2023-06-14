@@ -67,4 +67,5 @@ int main(int argc, char* argv[]) {
 
   LOG(info) << "Starting the user-mention-service server...";
   server.serve();
+  CleanupTracer();
 }
